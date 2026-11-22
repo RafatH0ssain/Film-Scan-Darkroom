@@ -1,0 +1,41 @@
+# Film Scan Darkroom -- runtime + dev dependencies
+#
+# Deliberately small and mainstream. If you are adding a dependency, ask
+# whether a newcomer can `pip install` it without a compiler -- on Windows and
+# on Apple Silicon.
+#
+# --- Config -----------------------------------------------------------------
+PyYAML>=6.0,<7             # config.yaml
+
+# --- Image processing -------------------------------------------------------
+numpy>=1.26,<3
+# Pillow for JPEG, tifffile for the 16-bit TIFFs Pillow cannot represent at all.
+#
+# Not OpenCV. Its wheel bundles a GPL-licensed FFmpeg -- x264, x265, aribb24 --
+# which is 49 MB of video codecs this project never calls and a copyleft
+# obligation on anything built from it. All it was doing here was JPEG coding,
+# a resize and a Scharr gradient.
+Pillow>=10.0,<13
+tifffile>=2024.1,<2027
+# EDSDK cannot decode CR3 so RAW
+# needs LibRaw. Ships as a wheel on Windows; no compiler required.
+# Not a fallback: Canon's RAW-develop framework is i386-only on macOS and will
+# not load on any current Mac, and its rendered output is the wrong input for
+# the inversion anyway, which wants linear sensor data.
+rawpy>=0.22,<1
+# HEIF is what an EOS body writes in HDR PQ mode (.HIF). pillow-heif bundles
+# libheif in the wheel and gives us the full 10 bits and the file's colour
+# profile -- which is how we know the samples are PQ-encoded rather than sRGB.
+#
+# It is also the one copyleft dependency: libheif hard-links libx265, so the
+# wheel is GPLv2 and so is any binary built from it. See THIRD-PARTY-NOTICES.md.
+pillow-heif>=0.16,<2
+
+# --- Local web UI -----------------------------------------------------------
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+python-multipart>=0.0.9    # form handling for the UI's control posts
+
+# --- Tests ------------------------------------------------------------------
+pytest>=8.0,<9
+httpx>=0.27,<1             # required by fastapi.testclient
