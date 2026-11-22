@@ -163,6 +163,13 @@ def create_app(
             "version": __version__,
             "platform": sys.platform,
             "photos_available": photos_available(),
+            "export": {
+                "format": config.export.format,
+                "tiff_compression": config.export.tiff_compression,
+                "jpeg_quality": config.export.jpeg_quality,
+                "folder": config.export.folder,
+            },
+            "detect": {"min_confidence": config.detect.min_confidence},
         }
 
     @app.get("/api/library")

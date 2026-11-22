@@ -1,1 +1,378 @@
-<!doctype html><title>Film Scan Darkroom</title>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Film Scan Darkroom</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 20 20" aria-hidden="true">
+        <rect x="1.4" y="4.6" width="17.2" height="12" rx="3.2"/>
+        <circle cx="10" cy="10.6" r="3.6"/>
+        <path d="M6.6 4.6l1.1-2h4.6l1.1 2"/>
+      </svg>
+      <h1>Film Scan Darkroom</h1>
+    </div>
+
+    <div class="camera-meta" id="roll-meta" data-idle="yes">
+      <span id="meta-roll">&mdash;</span>
+      <span class="dot"></span>
+      <span id="meta-stock">&mdash;</span>
+      <span class="dot"></span>
+      <span id="meta-developer">&mdash;</span>
+    </div>
+
+    <div class="status" id="status-chip" data-state="off">Library</div>
+    <button id="library-btn" class="btn">Library</button>
+    <div class="menu-wrap">
+      <button id="export-btn" class="btn primary" disabled>Export &#9656;</button>
+      <div class="menu" id="export-menu" hidden>
+        <button data-export="all">Roll</button>
+        <button data-export="selected">Selected</button>
+        <button data-export="frame">This frame</button>
+        <button data-export="sheet">Contact sheet</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="warnings" id="warnings" hidden>
+    <div class="warn-list" id="warnings-list"></div>
+    <button class="dismiss" id="warnings-dismiss" title="Dismiss" aria-label="Dismiss warnings">&times;</button>
+  </div>
+
+  <section class="library-view" id="library-view">
+    <div class="library-head">
+      <h2>Library</h2>
+      <p id="library-count">Your scanned rolls</p>
+      <button id="back-btn" class="btn" hidden>Back to roll</button>
+    </div>
+    <div class="open-row">
+      <input type="text" class="mono" id="open-path" placeholder="/path/to/Roll014"
+             spellcheck="false" autocomplete="off" aria-label="Folder to open">
+      <button id="open-btn" class="btn primary">Open folder&hellip;</button>
+    </div>
+    <details class="about">
+      <summary>Why type a path?</summary>
+      <p>
+        A browser cannot return the real folder behind its own picker, so enter the
+        folder that holds the scans. It needs a <code>roll.json</code> and the frame
+        TIFFs beside it. The same folder can be added to <code>library.roots</code>
+        in <code>config.yaml</code> so it appears here next time.
+      </p>
+    </details>
+    <div class="roll-grid" id="roll-grid"></div>
+    <p class="library-empty" id="library-empty" hidden>
+      No rolls found. Add a library root in <code>config.yaml</code>, or open a folder above.
+    </p>
+  </section>
+
+  <div id="workspace" hidden>
+    <div class="strip" id="strip">
+      <div class="analyse-bar" id="analyse-bar" hidden>
+        <div class="label" id="analyse-label">Analysing&hellip;</div>
+        <div class="meter"><div class="meter-fill" id="analyse-fill"></div></div>
+      </div>
+    </div>
+
+    <main>
+      <section class="viewer" id="viewer">
+        <div class="preview-stage" id="preview-stage" hidden>
+          <img id="preview" alt="Frame preview">
+          <svg class="crop-overlay" id="crop-overlay" viewBox="0 0 1 1"
+               preserveAspectRatio="none" hidden aria-label="Crop and rotation controls">
+            <path class="shade" id="crop-shade" fill-rule="evenodd"></path>
+            <rect class="crop-line" id="crop-rect"></rect>
+            <rect class="handle handle-nw" id="h-nw"></rect>
+            <rect class="handle handle-ne" id="h-ne"></rect>
+            <rect class="handle handle-sw" id="h-sw"></rect>
+            <rect class="handle handle-se" id="h-se"></rect>
+            <line class="rotate-line" id="rotate-line"></line>
+            <rect class="rotate-handle" id="rotate-handle"></rect>
+            <rect class="base-rect" id="base-rect" hidden></rect>
+          </svg>
+        </div>
+
+        <div class="placeholder" id="placeholder">
+          <svg class="placeholder-mark" viewBox="0 0 48 48" aria-hidden="true">
+            <rect x="4" y="11" width="40" height="28" rx="6"/>
+            <circle cx="24" cy="25" r="8"/>
+          </svg>
+          <p class="placeholder-title">No frame open</p>
+          <p class="hint">Pick a roll from the Library, or press <kbd>Library</kbd> above.</p>
+        </div>
+
+        <div class="hud right" id="export-hud" hidden>
+          <div class="hud-head">Export</div>
+          <div class="export-status" id="export-status">Starting&hellip;</div>
+          <div class="meter"><div class="meter-fill" id="export-fill"></div></div>
+          <button class="hud-btn" id="export-cancel">Cancel</button>
+          <ul class="export-results" id="export-results" hidden></ul>
+        </div>
+
+        <div class="toolbar" id="toolbar" hidden>
+          <div class="tb-group">
+            <button class="icon-btn" id="prev-frame" title="Previous frame (&larr;)" aria-label="Previous frame">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3L5 8l5 5"/></svg>
+            </button>
+            <span class="frame-count" id="frame-count">&mdash;</span>
+            <button class="icon-btn" id="next-frame" title="Next frame (&rarr;)" aria-label="Next frame">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5"/></svg>
+            </button>
+          </div>
+          <div class="tb-group">
+            <label class="pill" title="Show the negative (N)">
+              <input type="checkbox" id="negative-toggle">
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <circle cx="8" cy="8" r="6"/>
+                <path d="M8 2a6 6 0 000 12z" fill="currentColor" stroke="none"/>
+              </svg>
+              <span>Negative</span>
+            </label>
+            <button class="icon-btn" id="reject-btn" title="Reject frame (R)" aria-label="Reject frame">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+            </button>
+            <button class="icon-btn" id="export-frame" title="Export this frame (E)" aria-label="Export this frame">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8m0 0l-3-3m3 3l3-3M3 13h10"/></svg>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <aside class="panel" id="panel">
+        <details class="section" open>
+          <summary>
+            <svg class="chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5L8 6l-3.5 3.5"/></svg>
+            Crop
+          </summary>
+          <div class="section-body">
+            <label class="switch"><span>Auto crop &amp; angle</span><input type="checkbox" id="crop-auto" checked></label>
+            <details class="about">
+              <summary>What Auto means</summary>
+              <p>
+                The detected frame and straightening angle are used as-is. Dragging a
+                handle or changing the angle switches to a manual crop for this frame;
+                switching Auto back on clears those overrides.
+              </p>
+            </details>
+
+            <div class="field">
+              <span class="field-label">Angle <output id="angle-value">0.00&deg;</output></span>
+              <input type="range" id="angle" min="-5" max="5" step="0.05" value="0">
+            </div>
+            <div class="field">
+              <span class="field-label">Quarter turn</span>
+              <div class="quarter-row">
+                <button class="btn" id="rot-ccw" title="Turn counter-clockwise">&#8634; 90&deg;</button>
+                <button class="btn" id="rot-cw" title="Turn clockwise">&#8635; 90&deg;</button>
+              </div>
+            </div>
+            <label class="switch"><span>Mirror</span><input type="checkbox" id="mirror"></label>
+            <label class="switch"><span>Lock aspect while cropping</span><input type="checkbox" id="aspect-lock"></label>
+            <button class="btn wide" id="crop-reset">Reset crop &amp; angle</button>
+            <details class="about">
+              <summary>About the overlay</summary>
+              <p>
+                Switch on <em>Negative</em> to see the crop box. Drag a corner to resize it,
+                drag inside to move it, and use the handle above the box to straighten
+                the scan. Crop fractions are stored against the straightened negative.
+              </p>
+            </details>
+          </div>
+        </details>
+
+        <details class="section" open>
+          <summary>
+            <svg class="chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5L8 6l-3.5 3.5"/></svg>
+            Film
+          </summary>
+          <div class="section-body">
+            <div class="field">
+              <span class="field-label">Film type</span>
+              <div class="segmented" id="film-mode">
+                <button data-value="bw">B&amp;W</button>
+                <button data-value="color">Colour</button>
+              </div>
+            </div>
+            <div class="field">
+              <span class="field-label">Exposure <output id="exposure-value">1.00&times;</output></span>
+              <input type="range" id="exposure" min="0.25" max="4" step="0.05" value="1">
+            </div>
+            <div class="field">
+              <span class="field-label">Contrast <output id="contrast-value">1.65</output></span>
+              <input type="range" id="contrast" min="0.6" max="3" step="0.05" value="1.65">
+            </div>
+            <div class="field">
+              <span class="field-label">Black point <output id="black-value">0.00</output></span>
+              <input type="range" id="black-point" min="0" max="0.95" step="0.01" value="0">
+            </div>
+            <div class="field">
+              <span class="field-label">White point <output id="white-value">1.00</output></span>
+              <input type="range" id="white-point" min="0.05" max="1" step="0.01" value="1">
+            </div>
+            <button class="btn wide" id="pick-base">Pick base</button>
+            <p class="note" id="base-hint" hidden>Drag a rectangle over the clear film base on the negative.</p>
+            <details class="about" id="base-note" data-measured="no">
+              <summary>Measuring the film base</summary>
+              <p>
+                The base is the unexposed rebate between frames. Measuring it beats the
+                automatic guess, which assumes the densest part of the picture is close
+                to base. The area you mark is re-measured at full resolution on export,
+                so a small on-screen rectangle is enough.
+              </p>
+            </details>
+            <details class="about">
+              <summary>About the film settings</summary>
+              <p>
+                These drive both the preview and the saved positive, so the file matches
+                what you judged here. The scan itself is never modified.
+              </p>
+            </details>
+          </div>
+        </details>
+
+        <details class="section">
+          <summary>
+            <svg class="chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5L8 6l-3.5 3.5"/></svg>
+            Sharpen
+          </summary>
+          <div class="section-body">
+            <div class="field">
+              <span class="field-label">Amount <output id="sharpen-amount-value">0.00</output></span>
+              <input type="range" id="sharpen-amount" min="0" max="3" step="0.05" value="0">
+            </div>
+            <div class="field">
+              <span class="field-label">Radius <output id="sharpen-radius-value">1.0 px</output></span>
+              <input type="range" id="sharpen-radius" min="0.5" max="8" step="0.1" value="1">
+            </div>
+            <div class="field">
+              <span class="field-label">Threshold <output id="sharpen-threshold-value">0.00</output></span>
+              <input type="range" id="sharpen-threshold" min="0" max="1" step="0.01" value="0">
+            </div>
+            <details class="about">
+              <summary>About unsharp masking</summary>
+              <p>
+                Sharpness is added by subtracting a blurred copy of the luminance. Amount
+                sets the strength, radius the scale of the edges, and threshold keeps
+                low-contrast grain from being sharpened along with detail.
+              </p>
+            </details>
+          </div>
+        </details>
+
+        <details class="section">
+          <summary>
+            <svg class="chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5L8 6l-3.5 3.5"/></svg>
+            Output
+          </summary>
+          <div class="section-body">
+            <dl class="facts">
+              <dt>Format</dt><dd id="out-format">&mdash;</dd>
+              <dt>TIFF compression</dt><dd id="out-tiff">&mdash;</dd>
+              <dt>JPEG quality</dt><dd id="out-jpeg">&mdash;</dd>
+              <dt>Folder</dt><dd id="out-folder">&mdash;</dd>
+              <dt>Review below</dt><dd id="out-confidence">&mdash;</dd>
+              <dt>Frame aspect</dt><dd id="out-aspect">&mdash;</dd>
+            </dl>
+            <details class="about" id="output-note">
+              <summary>Where these come from</summary>
+              <p>
+                This section is read-only and shows the settings the server started
+                with. Change <code>export:</code>, <code>detect.min_confidence</code> and
+                <code>film.aspect</code> in <code>config.yaml</code>, then restart the
+                app. Positives are written to the folder above inside the roll; the
+                original scans are never touched.
+              </p>
+            </details>
+          </div>
+        </details>
+
+        <details class="section">
+          <summary>
+            <svg class="chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5L8 6l-3.5 3.5"/></svg>
+            Roll
+          </summary>
+          <div class="section-body">
+            <dl class="facts">
+              <dt>Preset</dt><dd id="preset-name">&mdash;</dd>
+              <dt>Folder</dt><dd class="path" id="roll-path">&mdash;</dd>
+            </dl>
+            <div class="field">
+              <span class="field-label">Save a preset</span>
+              <input type="text" id="preset-input" placeholder="e.g. Kentmere 400"
+                     spellcheck="false" autocomplete="off">
+            </div>
+            <button class="btn wide" id="save-preset">Save as preset&hellip;</button>
+            <details class="about">
+              <summary>About presets</summary>
+              <p>
+                A preset stores the film and sharpen settings of this frame, matched by
+                the roll's film stock the next time that stock is opened. Crop and angle
+                are per frame and are never shared.
+              </p>
+            </details>
+            <div class="keyline">
+              <span class="field-label">Roll defaults</span>
+              <label class="switch"><span>Mirror</span><input type="checkbox" id="roll-mirror"></label>
+              <div class="field">
+                <span class="field-label">Quarter turn</span>
+                <div class="segmented" id="roll-rotate">
+                  <button data-value="0">0&deg;</button>
+                  <button data-value="1">90&deg;</button>
+                  <button data-value="2">180&deg;</button>
+                  <button data-value="3">270&deg;</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <details class="section" open>
+          <summary>
+            <svg class="chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5L8 6l-3.5 3.5"/></svg>
+            Apply to
+          </summary>
+          <div class="section-body">
+            <div class="apply-row">
+              <div class="segmented" id="apply-target">
+                <button data-value="all">All</button>
+                <button data-value="selected">Selected</button>
+                <button data-value="auto">Auto</button>
+              </div>
+              <button class="btn primary" id="apply-btn">Apply</button>
+            </div>
+            <p class="note keys">
+              <kbd>Shift</kbd> or <kbd>&#8984;</kbd>-click thumbnails to select more than one.
+            </p>
+            <details class="about">
+              <summary>What gets copied</summary>
+              <p>
+                Film, sharpen and orientation from this frame. Each frame keeps its own
+                crop and angle. <em>Auto</em> targets only frames that still use all
+                automatic settings.
+              </p>
+            </details>
+            <div class="keyline">
+              <button class="btn wide" id="photos-btn" hidden>Open in Photos</button>
+              <details class="about" id="photos-note" hidden>
+                <summary>About Open in Photos</summary>
+                <p>Photos imports a copy. Edits made there stay in Photos.</p>
+              </details>
+            </div>
+          </div>
+        </details>
+
+        <p class="panel-foot">
+          Keys: <kbd>&larr;</kbd><kbd>&rarr;</kbd> frame &middot;
+          <kbd>R</kbd> reject &middot; <kbd>E</kbd> export &middot; <kbd>N</kbd> negative.
+        </p>
+      </aside>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

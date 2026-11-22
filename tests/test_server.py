@@ -63,10 +63,23 @@ def test_status(app_ctx):
     response = client.get("/api/status")
     assert response.status_code == 200
     data = response.json()
-    assert set(data) == {"app", "version", "platform", "photos_available"}
+    assert set(data) == {
+        "app", "version", "platform", "photos_available", "export", "detect",
+    }
     assert data["version"] == __version__
     assert data["platform"] == sys.platform
     assert data["photos_available"] is photos_available()
+    cfg = Config()
+    assert set(data["export"]) == {
+        "format", "tiff_compression", "jpeg_quality", "folder",
+    }
+    assert data["export"] == {
+        "format": cfg.export.format,
+        "tiff_compression": cfg.export.tiff_compression,
+        "jpeg_quality": cfg.export.jpeg_quality,
+        "folder": cfg.export.folder,
+    }
+    assert data["detect"] == {"min_confidence": cfg.detect.min_confidence}
 
 
 def test_library(app_ctx):
