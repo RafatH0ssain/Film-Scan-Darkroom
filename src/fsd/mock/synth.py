@@ -78,9 +78,13 @@ def synth_scan(
     portrait: bool = False,
     holder: bool = False,
     blank: bool = False,
+    window_slack: float = 0.0,
     seed: int = 0,
 ) -> tuple[np.ndarray, Truth]:
     """A linear uint16 RGB ``(H, W, 3)`` scan, and the right answer for it.
+
+    ``window_slack`` (holder only) widens the frame window past the frame's
+    right edge by that fraction of the width, as on Roll001 frame 50.
 
     ``portrait`` lays the film strip vertically (the camera turned, or the
     holder rotated): drawn landscape, then transposed, so the result is
@@ -124,6 +128,9 @@ def synth_scan(
         # Frame window sits just inside the frame; its edge is the crop.
         inset = int(round(0.01 * min(H, W)))
         wx0, wy0, wx1, wy1 = fx0 + inset, fy0 + inset, fx1 - inset, fy1 - inset
+        if window_slack:
+            # Window wider than the frame: the clear frame line shows inside.
+            wx1 = fx1 + int(round(window_slack * W))
         bar = int(round(0.035 * W))
         mask = np.zeros((H, W), bool)
         mask[wy0:wy1, wx0:wx1] = True
@@ -132,7 +139,7 @@ def synth_scan(
         mask[wy0:wy1, int(0.01 * W) : wx0 - bar] = True  # left neighbour
         mask[wy0:wy1, wx1 + bar : W - int(0.01 * W)] = True  # right neighbour
         img = np.where(mask[..., None], img, np.float32(_HOLDER))
-        box = (wx0, wy0, wx1, wy1)
+        box = (wx0, wy0, min(wx1, fx1), wy1)
         fill = _HOLDER
     else:
         box = (fx0, fy0, fx1, fy1)

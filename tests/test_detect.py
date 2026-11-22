@@ -83,3 +83,9 @@ def test_detect_is_fast():
     start = time.perf_counter()
     detect(lin)
     assert time.perf_counter() - start < 1.5
+
+
+def test_frame_line_inside_window_is_cropped_off():
+    img, truth = synth_scan(holder=True, window_slack=0.015, angle=0.5)
+    d = detect(linear16_to_linear(img))
+    assert _close(d.crop, truth.crop, 0.005), (d.crop, truth.crop)

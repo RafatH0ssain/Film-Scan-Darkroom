@@ -149,8 +149,8 @@ def _skew(B: np.ndarray) -> tuple[float, list[float]]:
 
 def _base_region(
     L: np.ndarray, box: tuple[int, int, int, int], is_base, angle: float
-) -> Region | None:
-    """The largest patch of bare film base beside the frame.
+) -> tuple[Region, float] | None:
+    """The brightest patch of bare film base beside the frame.
 
     The rebate -- sprocket holes, edge print, mostly clear base -- runs along
     the frame's *long* sides on 35 mm and 120 alike, and that is where the
@@ -214,7 +214,7 @@ def _base_region(
     # sits in the lens's fall-off and reads up to 45% low (Roll001 frames 48,
     # 56, 66). Bare light cannot win -- holes are a minority of every row on
     # the rebate side, and the row medians ignore them.
-    (rx0, ry0, rx1, ry1), _ = max(found, key=lambda f: f[1])
+    (rx0, ry0, rx1, ry1), level = max(found, key=lambda f: f[1])
     # Shrink away from the run's edges, where the transition blurs.
     sx, sy = (rx1 - rx0) * 0.2, (ry1 - ry0) * 0.2
     rx0, rx1, ry0, ry1 = rx0 + sx, rx1 - sx, ry0 + sy, ry1 - sy
@@ -225,7 +225,54 @@ def _base_region(
     sx_, sy_ = cx * math.cos(t) - cy * math.sin(t), cx * math.sin(t) + cy * math.cos(t)
     rw, rh = (rx1 - rx0) * 0.9, (ry1 - ry0) * 0.9
     ox, oy = sx_ + w / 2 - rw / 2, sy_ + h / 2 - rh / 2
-    return (ox / w, oy / h, rw / w, rh / h)
+    return (ox / w, oy / h, rw / w, rh / h), level
+
+
+def _refine(
+    L: np.ndarray, box: list[int], base_level: float, reasons: list[str]
+) -> list[int]:
+    """Step each edge past a strip of clear film base just inside it.
+
+    A holder window can be wider than the exposed frame, so the film's own
+    frame line -- clear base, bright on the negative -- shows inside it
+    (Roll001 frame 50, right edge). The crop must stop at the picture, not the
+    window. A strip qualifies only if nearly every pixel along the whole side
+    is base-bright: thin picture (a black cat is thin on the negative) is never
+    that uniform for the full height of a frame.
+    """
+    x0, y0, x1, y1 = box
+    bright = L > base_level - 0.15
+    reach_x = max(2, int((x1 - x0) * 0.04))
+    reach_y = max(2, int((y1 - y0) * 0.04))
+    cols = bright[y0 : y1 + 1, x0 : x1 + 1].mean(axis=0)
+    rows = bright[y0 : y1 + 1, x0 : x1 + 1].mean(axis=1)
+
+    def steps(frac: np.ndarray, reach: int) -> int:
+        # The line need not touch the edge: holder shadow can sit between
+        # them (frame 50: 8 px of it). So cut just inside the innermost
+        # qualifying line within reach -- but only if the picture beyond it is
+        # clearly not base-bright. On a very thin negative everything is near
+        # base (frame 64) and there is no line to find.
+        idx = np.nonzero(frac[:reach] > 0.7)[0]
+        if not idx.size:
+            return 0
+        cut = int(idx.max()) + 1
+        beyond = frac[cut : cut + reach]
+        return cut if beyond.size and beyond.mean() < 0.3 else 0
+
+    moved = [
+        steps(cols, reach_x),
+        steps(rows, reach_y),
+        steps(cols[::-1], reach_x),
+        steps(rows[::-1], reach_y),
+    ]
+    if any(moved):
+        names = ("left", "top", "right", "bottom")
+        reasons_ = [n for n, m in zip(names, moved) if m]
+        # Not a doubt about the result -- recorded so a reviewer can see why
+        # the crop is tighter than the window.
+        reasons.append("frame line inside the window on the " + ", ".join(reasons_))
+    return [x0 + moved[0], y0 + moved[1], x1 - moved[2], y1 - moved[3]]
 
 
 def detect(linear: np.ndarray, *, aspect: float = 1.5, margin: float = 0.01) -> Detection:
@@ -259,9 +306,14 @@ def detect(linear: np.ndarray, *, aspect: float = 1.5, margin: float = 0.01) -> 
 
     # Above the threshold is "not holder" in holder mode and "clear base" on a
     # bare strip -- the base either way, once the picture is excluded.
-    base = _base_region(Lr, (x0, y0, x1 + 1, y1 + 1), lambda v: v > level, angle)
-    if base is None:
+    found_base = _base_region(Lr, (x0, y0, x1 + 1, y1 + 1), lambda v: v > level, angle)
+    if found_base is None:
+        base = None
         reasons.append("no clear film base found beside the frame")
+    else:
+        base, base_level = found_base
+        if mode == "holder":
+            x0, y0, x1, y1 = _refine(Lr, [x0, y0, x1, y1], base_level, reasons)
 
     m = margin * min(h, w)
     crop = (
@@ -275,8 +327,12 @@ def detect(linear: np.ndarray, *, aspect: float = 1.5, margin: float = 0.01) -> 
     fit = float(np.mean([max(0.0, 1 - r / 6) for r in rms])) if rms else 0.5
     bw, bh = (x1 - x0) * 1.0, (y1 - y0) * 1.0
     r = max(bw, bh) / max(1.0, min(bw, bh))
-    shape = max(0.0, 1 - abs(math.log(r / aspect)) / 0.25)
-    if shape < 0.5:
+    # 0.4 decades of log-ratio to zero: a frame line trimmed off one side
+    # moves Roll001 frames to ~1.44:1, which is still plainly 3:2.
+    shape = max(0.0, 1 - abs(math.log(r / aspect)) / 0.4)
+    if fit < 0.8:
+        reasons.append("the frame's edges are not quite straight lines")
+    if shape < 0.8:
         reasons.append(f"frame shape {r:.2f}:1 is far from the expected {aspect:.2f}:1")
     inside = Lr[y0 : y1 + 1, x0 : x1 + 1]
     if mode == "holder":
@@ -286,6 +342,8 @@ def detect(linear: np.ndarray, *, aspect: float = 1.5, margin: float = 0.01) -> 
     contrast = min(1.0, spread / 0.5)
     if contrast < 0.5:
         reasons.append("little contrast inside the frame -- blank or fogged?")
+    elif contrast < 0.8:
+        reasons.append("a flat frame: low contrast makes its edges harder to trust")
     confidence = float(sides * fit * shape * contrast)
 
     return Detection(crop=crop, angle=angle, base_region=base, confidence=confidence, reasons=reasons)
