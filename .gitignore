@@ -12,3 +12,4 @@ presets.yaml
 cache/
 rolls/
 .DS_Store
+.claude/

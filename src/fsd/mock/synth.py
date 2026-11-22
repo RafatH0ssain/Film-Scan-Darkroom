@@ -79,12 +79,16 @@ def synth_scan(
     holder: bool = False,
     blank: bool = False,
     window_slack: float = 0.0,
+    lip_shadow: float = 0.0,
     seed: int = 0,
 ) -> tuple[np.ndarray, Truth]:
     """A linear uint16 RGB ``(H, W, 3)`` scan, and the right answer for it.
 
     ``window_slack`` (holder only) widens the frame window past the frame's
     right edge by that fraction of the width, as on Roll001 frame 50.
+
+    ``lip_shadow`` (holder only) shades the frame window's edges over that
+    fraction of the short side; the truth crop excludes the shading.
 
     ``portrait`` lays the film strip vertically (the camera turned, or the
     holder rotated): drawn landscape, then transposed, so the result is
@@ -140,6 +144,16 @@ def synth_scan(
         mask[wy0:wy1, wx1 + bar : W - int(0.01 * W)] = True  # right neighbour
         img = np.where(mask[..., None], img, np.float32(_HOLDER))
         box = (wx0, wy0, min(wx1, fx1), wy1)
+        if lip_shadow:
+            # The holder's lip shades the window's edge: up to half a decade
+            # darker at the edge, easing to nothing ``ramp`` px in (Roll001
+            # frame 03 measured 0.5 decades over ~12 px at half size).
+            ramp = max(1, int(round(lip_shadow * min(H, W))))
+            yy, xx = np.mgrid[0:H, 0:W]
+            d = np.minimum.reduce([xx - wx0, yy - wy0, wx1 - 1 - xx, wy1 - 1 - yy]).astype(np.float32)
+            shade = np.where((d >= 0) & (d < ramp), 0.5 * (1 - d / ramp) ** 2, 0.0)
+            img = img * np.power(10.0, -shade)[..., None].astype(np.float32)
+            box = (box[0] + ramp, box[1] + ramp, box[2] - ramp, box[3] - ramp)
         fill = _HOLDER
     else:
         box = (fx0, fy0, fx1, fy1)

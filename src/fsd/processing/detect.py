@@ -275,6 +275,37 @@ def _refine(
     return [x0 + moved[0], y0 + moved[1], x1 - moved[2], y1 - moved[3]]
 
 
+def _shadow_trim(L: np.ndarray, box: list[int], reasons: list[str]) -> list[int]:
+    """Step each edge past the holder lip's shadow.
+
+    The lip shades the window's edge: a ramp up to half a decade darker that
+    eases into the picture over ~2% of the frame (Roll001 frame 03). Inverted,
+    it is a white band. The ramp's signature is a steep, steady climb inward;
+    picture -- even a sky gradient -- is far flatter at this scale. Walk in
+    while the side's profile is still climbing faster than 0.02 decades per
+    pixel, never more than 3% of the frame.
+    """
+    x0, y0, x1, y1 = box
+    inner = L[y0 : y1 + 1, x0 : x1 + 1]
+    hh, ww = inner.shape
+    my, mx = max(1, hh // 10), max(1, ww // 10)
+    profiles = (
+        np.median(inner[my:-my, :], axis=0),  # left, inward = increasing index
+        np.median(inner[:, mx:-mx], axis=1),  # top
+        np.median(inner[my:-my, :], axis=0)[::-1],  # right
+        np.median(inner[:, mx:-mx], axis=1)[::-1],  # bottom
+    )
+    reach = (max(2, int(ww * 0.03)), max(2, int(hh * 0.03)))
+    moved = []
+    for k, prof in enumerate(profiles):
+        limit = min(reach[k % 2], len(prof) - 3)
+        i = 0
+        while i < limit and (prof[i + 1] - prof[i] > 0.02 or prof[i + 2] - prof[i + 1] > 0.02):
+            i += 1
+        moved.append(i)
+    return [x0 + moved[0], y0 + moved[1], x1 - moved[2], y1 - moved[3]]
+
+
 def detect(linear: np.ndarray, *, aspect: float = 1.5, margin: float = 0.01) -> Detection:
     """Locate the frame in ``linear`` -- an ``(H, W, 3)`` or ``(H, W)`` linear image."""
     L = _log_lum(linear)
@@ -314,6 +345,8 @@ def detect(linear: np.ndarray, *, aspect: float = 1.5, margin: float = 0.01) -> 
         base, base_level = found_base
         if mode == "holder":
             x0, y0, x1, y1 = _refine(Lr, [x0, y0, x1, y1], base_level, reasons)
+    if mode == "holder":
+        x0, y0, x1, y1 = _shadow_trim(Lr, [x0, y0, x1, y1], reasons)
 
     m = margin * min(h, w)
     crop = (

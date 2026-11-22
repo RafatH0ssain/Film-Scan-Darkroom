@@ -89,3 +89,10 @@ def test_frame_line_inside_window_is_cropped_off():
     img, truth = synth_scan(holder=True, window_slack=0.015, angle=0.5)
     d = detect(linear16_to_linear(img))
     assert _close(d.crop, truth.crop, 0.005), (d.crop, truth.crop)
+
+
+@pytest.mark.parametrize("angle", [0.0, 1.2])
+def test_holder_lip_shadow_is_cropped_off(angle):
+    img, truth = synth_scan(holder=True, lip_shadow=0.015, angle=angle)
+    d = detect(linear16_to_linear(img))
+    assert _close(d.crop, truth.crop, 0.005), (d.crop, truth.crop)
