@@ -47,11 +47,18 @@ def render(decoded: Decoded, s: FrameSettings, *, scale: float = 1.0) -> np.ndar
     only scales the sharpen radius, so the two sizes show the same image.
     """
     lin = decoded.linear()
-    base = sample_base(lin, region=s.base_region)
-    params = s.film.replace(base=base)
-
     px = crop(straighten(decoded.pixels, s.angle), s.crop)
     lin_c = crop(straighten(lin, s.angle), s.crop)
+
+    # The rebate sits at the edge of the capture, where the backlight is
+    # dimmest. Thin negative in the brighter middle can read clearer than that
+    # base and would invert to flat black (12% of Roll001 frame 50). Nothing in
+    # the picture can be clearer than clear film, so the frame's own brightest
+    # pixels set a floor under the base.
+    strip = sample_base(lin, region=s.base_region)
+    brightest = sample_base(lin_c, percentile=99.9)
+    base = tuple(max(a, b) for a, b in zip(strip, brightest))
+    params = s.film.replace(base=base)
 
     measured = analyse(lin_c, params)
     kind = decoded.kind

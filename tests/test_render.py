@@ -79,3 +79,37 @@ def test_render_bw_is_neutral():
     )
     assert np.array_equal(out[..., 0], out[..., 1])
     assert np.array_equal(out[..., 1], out[..., 2])
+
+
+def _lit_unevenly(img: np.ndarray, centre_gain: float) -> np.ndarray:
+    """A backlight brighter in the middle than at the edges, as on the copy stand."""
+    h, w = img.shape[:2]
+    yy, xx = np.mgrid[0:h, 0:w]
+    r = np.hypot((xx - w / 2) / (w / 2), (yy - h / 2) / (h / 2)) / np.sqrt(2)
+    gain = centre_gain - (centre_gain - 1.0) * r**2
+    return np.clip(img * gain[..., None], 0, 65535).astype(np.uint16)
+
+
+def test_uneven_backlight_does_not_crush_shadows():
+    # Roll001 frame 50: the backlight is brighter in the middle than at the
+    # sprocket strip the base is sampled from, so the thinnest negative read
+    # "clearer than clear film" and went to pure black (12% of the frame).
+    h, w = 200, 300
+    lin = np.zeros((h, w, 3), np.float32)
+    lin[:30] = 0.5  # rebate strip at the edge: clear film, dimly lit
+    ramp = np.linspace(0.02, 0.6, w, dtype=np.float32)  # picture, up to 1.2x the strip
+    lin[40:] = ramp[None, :, None]
+    img = (lin * 65535).astype(np.uint16)
+    out = render(
+        Decoded("raw", img),
+        FrameSettings(crop=(0.0, 0.2, 1.0, 1.0), base_region=(0.1, 0.02, 0.8, 0.1)),
+    )
+    assert (out == 0).mean() < 0.005
+
+
+def test_highlights_roll_off_instead_of_clipping():
+    # Auto exposure lifts the midtones; whatever goes past white must roll off,
+    # not pile up at 65535 (Roll001 frame 50 had 26% pure white).
+    img, truth = synth_scan(holder=True, seed=5)
+    out = render(Decoded("raw", img), FrameSettings(crop=truth.crop))
+    assert (out == 65535).mean() < 0.005

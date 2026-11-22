@@ -1,4 +1,5 @@
 """Copied from Canon-EDSDK-Film-Scanner src/cefs/processing/film.py at abf739d. Port fixes by hand.
+Changed here: highlights roll off through a shoulder instead of hard-clipping at white.
 
 Negative-to-positive inversion.
 
@@ -248,6 +249,13 @@ def analyse(linear: np.ndarray, params: FilmParams) -> dict:
         if median > 1e-6:
             target = _MIDGREY ** (1.0 / max(float(params.contrast), 1e-3))
             auto_exposure = float(np.clip(target / median, 0.05, 50.0))
+            # Never push the brightest 1% past where the shoulder still holds
+            # detail (~3x white). A frame that is mostly dark subject on a
+            # bright background (Roll001 frame 41, a black cat) otherwise
+            # meters on the cat and burns the background flat.
+            bright = float(np.percentile(greys, 99))
+            if bright > 1e-6:
+                auto_exposure = min(auto_exposure, _HIGHLIGHT_ROOM / bright)
 
     return {
         "base": tuple(float(v) for v in base_arr),
@@ -258,6 +266,28 @@ def analyse(linear: np.ndarray, params: FilmParams) -> dict:
 
 
 # --- lookup tables -----------------------------------------------------------
+
+
+#: How far past white auto exposure may push the brightest 1% of a frame;
+#: the shoulder still separates tones up to about here.
+_HIGHLIGHT_ROOM = 3.0
+
+#: Where the highlight shoulder starts, on the 0-1 scale before contrast.
+_KNEE = 0.75
+
+
+def _shoulder(x: np.ndarray) -> np.ndarray:
+    """Identity below the knee, then an exponential roll-off that approaches 1.
+
+    Auto exposure puts the median at mid-grey, which on a contrasty frame
+    pushes everything above it past white. A hard clip turned a quarter of
+    Roll001 frame 50 into flat 65535; this keeps tones up to ~3.5x over white
+    distinguishable instead. Slope is 1 at the knee, so nothing below it moves.
+    """
+    k = _KNEE
+    # Capped: exp(-50) is already 1 in 16 bits, and larger underflows.
+    over = np.minimum(np.maximum(x - k, 0.0) / (1.0 - k), 50.0)
+    return np.where(x <= k, x, k + (1.0 - k) * (1.0 - np.exp(-over)))
 
 
 def build_luts(
@@ -301,7 +331,7 @@ def build_luts(
             x = np.power(x, measured["gammas"][c])
         x = x * float(params.channel_gain[c]) * float(params.exposure)
         x = x * float(measured.get("auto_exposure", (1.0, 1.0, 1.0))[c])
-        x = np.clip((x - black) / (white - black), 0.0, 1.0)
+        x = _shoulder(np.maximum((x - black) / (white - black), 0.0))
         if params.contrast != 1.0:
             # x ** contrast, NOT x ** (1 / contrast). base/pixel recovers
             # E ** gamma, so getting back to E raises to 1 / gamma -- which is
