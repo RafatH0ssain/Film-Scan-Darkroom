@@ -13,3 +13,9 @@ cache/
 rolls/
 .DS_Store
 .claude/
+
+# Working notes, kept local like the sibling repos
+CONTEXT.md
+ROADMAP.md
+CLAUDE.md
+docs/superpowers/
