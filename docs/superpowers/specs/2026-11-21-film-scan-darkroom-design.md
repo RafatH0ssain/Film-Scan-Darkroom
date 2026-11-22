@@ -37,7 +37,9 @@ to catch the frames automation got wrong. It never talks to a camera.
 ## Non-goals
 
 - Camera control or capture of any kind.
-- Dust and scratch removal (deferred; large on its own).
+- Automatic dust and scratch removal. Rafat uses Apple Photos' Clean Up for
+  blemishes and prefers it to a built-in remover; Darkroom hands frames to it
+  (see "Open in Photos") rather than reimplementing it.
 - Catalogue/library management across many rolls beyond opening one at a time
   from a list.
 - A shared code package across the three apps (see Approaches).
@@ -209,6 +211,11 @@ Same chrome/inspector design language as the EDSDK app's rebuilt UI
 - **Apply to:** all frames / selected frames / frames still on auto.
 - **Export:** whole roll, selected, or current frame; progress bar; cancellable;
   contact sheet as a separate button.
+- **Open in Photos** (macOS only; hidden elsewhere): on the current frame,
+  exports it first if it has no up-to-date positive, then runs
+  `open -a Photos <positive>` so Rafat can use Clean Up. Photos imports a copy
+  into its library; nothing comes back into the roll automatically — the
+  button's `ⓘ` says so. Uses the TIFF if one exists, else the JPEG.
 - Processing runs in a worker thread pool; the UI never blocks.
 
 ### Packaging, tests, CI
