@@ -272,3 +272,23 @@ def test_open_in_photos_calls_open(monkeypatch):
 
 def read_rgb(path: Path) -> np.ndarray:
     return tifffile.imread(str(path))
+
+
+def test_export_to_folder_outside_roll(tmp_path):
+    _, roll = _make_roll(tmp_path)
+    edits = Edits()
+    cfg = Config()
+    library = tmp_path / "Pictures" / "Film"
+    cfg.export.folder = str(library)
+
+    first = export_frame(roll, edits, 1, cfg, None)
+    assert first.error is None
+    assert first.files == [library / "Roll014_Frame01.tif"]
+    assert first.files[0].is_file()
+    recorded = edits.frames[1].exported["tif"]
+    assert roll.path / recorded == first.files[0].resolve()
+
+    # Re-export recognises its own file and overwrites it, no -1 copy.
+    second = export_frame(roll, edits, 1, cfg, None)
+    assert second.error is None
+    assert sorted(p.name for p in library.iterdir()) == ["Roll014_Frame01.tif"]

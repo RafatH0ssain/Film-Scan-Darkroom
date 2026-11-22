@@ -52,8 +52,14 @@ def _frame_file(roll: Roll, n: int) -> FrameFile | None:
 
 
 def _relative(roll: Roll, path: Path) -> str:
-    """Path as recorded in darkroom.json, relative to the roll folder."""
-    return path.relative_to(roll.path).as_posix()
+    """Path as recorded in darkroom.json: relative to the roll folder when it
+    is inside it, absolute when ``export.folder`` points elsewhere (e.g. a
+    Pictures library). ``roll.path / recorded`` gives the file back either way.
+    """
+    try:
+        return path.relative_to(roll.path).as_posix()
+    except ValueError:
+        return path.resolve().as_posix()
 
 
 def _formats(cfg: Config):
