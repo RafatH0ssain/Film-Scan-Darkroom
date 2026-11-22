@@ -5,9 +5,11 @@ from __future__ import annotations
 import os
 
 import pytest
+import yaml
 
 from fsd import config as config_module
 from fsd.config import Config, load_config
+from fsd.paths import REPO_ROOT
 
 
 @pytest.fixture
@@ -25,6 +27,7 @@ def test_defaults(clean_config):
     assert cfg.library.roots == [
         "~/Documents/Canon EDSDK Film Scanner/captures",
         "~/Documents/Canon Smart Film Scanner/captures",
+        "rolls",
     ]
     assert cfg.film.mode == "bw"
     assert cfg.film.aspect == 1.5
@@ -53,6 +56,23 @@ def test_env_override_port(clean_config, monkeypatch):
 def test_env_roots_split_on_pathsep(clean_config, monkeypatch):
     monkeypatch.setenv("FSD_LIBRARY_ROOTS", os.pathsep.join(["/one", "/two"]))
     assert load_config().library.roots == ["/one", "/two"]
+
+
+def test_resolved_roots_expands_home_and_resolves_relatives(clean_config, monkeypatch):
+    monkeypatch.setenv("HOME", "/home/tester")
+    cfg = load_config()
+    assert [str(path) for path in cfg.library.resolved_roots()] == [
+        "/home/tester/Documents/Canon EDSDK Film Scanner/captures",
+        "/home/tester/Documents/Canon Smart Film Scanner/captures",
+        str(clean_config / "rolls"),
+    ]
+
+
+def test_example_config_roots_match_defaults():
+    example = yaml.safe_load(
+        (REPO_ROOT / "config.example.yaml").read_text(encoding="utf-8")
+    )
+    assert example["library"]["roots"] == Config().library.roots
 
 
 def test_invalid_mode_is_error(tmp_path):

@@ -10,9 +10,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from fsd import __version__
+from fsd.app import server as server_mod
 from fsd.app.server import create_app
 from fsd.config import Config, load_config
 from fsd.darkroom.export import photos_available
+from fsd.darkroom.roll import find_rolls
 from fsd.mock.synth import synth_scan
 from fsd.processing.tiffio import write_tiff
 
@@ -303,3 +305,50 @@ def test_open_in_photos_409_off_mac(app_ctx, monkeypatch):
 
 def test_binds_loopback_by_default():
     assert load_config().server.host == "127.0.0.1"
+
+
+def test_prepare_user_folder_noop_from_checkout(tmp_path, monkeypatch):
+    monkeypatch.setattr(server_mod, "is_frozen", lambda: False)
+    monkeypatch.setattr(server_mod, "user_data_dir", lambda: tmp_path)
+
+    assert server_mod.prepare_user_folder() is None
+    assert not (tmp_path / "config.yaml").exists()
+    assert not (tmp_path / "rolls").exists()
+    assert not (tmp_path / "captures").exists()
+
+
+def test_prepare_user_folder_seeds_config_and_example_roll(tmp_path, monkeypatch):
+    example = tmp_path / "seed" / "config.example.yaml"
+    example.parent.mkdir()
+    example.write_text("library:\n  roots: [rolls]\n", encoding="utf-8")
+    user = tmp_path / "user"
+    monkeypatch.setattr(server_mod, "is_frozen", lambda: True)
+    monkeypatch.setattr(server_mod, "user_data_dir", lambda: user)
+    monkeypatch.setattr(server_mod, "example_config_path", lambda: example)
+
+    config_path = server_mod.prepare_user_folder()
+
+    assert config_path == user / "config.yaml"
+    assert config_path.read_text(encoding="utf-8") == example.read_text(encoding="utf-8")
+    roll = user / "rolls" / "Example Roll"
+    assert roll.is_dir()
+    assert len(list(roll.glob("*.tif"))) == 4
+    assert find_rolls([user / "rolls"]) == [roll]
+    assert not (user / "captures").exists()
+
+
+def test_prepare_user_folder_leaves_existing_config_and_rolls(tmp_path, monkeypatch):
+    user = tmp_path / "user"
+    config = user / "config.yaml"
+    config.parent.mkdir(parents=True)
+    config.write_text("server:\n  port: 8123\n", encoding="utf-8")
+    roll = user / "rolls" / "My Roll"
+    roll.mkdir(parents=True)
+    (roll / "roll.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(server_mod, "is_frozen", lambda: True)
+    monkeypatch.setattr(server_mod, "user_data_dir", lambda: user)
+
+    server_mod.prepare_user_folder()
+
+    assert config.read_text(encoding="utf-8") == "server:\n  port: 8123\n"
+    assert not (user / "rolls" / "Example Roll").exists()

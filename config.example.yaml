@@ -15,10 +15,11 @@
 
 library:
   # Folders searched for rolls. Relative paths resolve against the user data
-  # folder; `~` is expanded. Rolls opened by hand are remembered separately.
+  # folder; `~` is expanded.
   roots:
     - "~/Documents/Canon EDSDK Film Scanner/captures"
     - "~/Documents/Canon Smart Film Scanner/captures"
+    - "rolls"                        # relative to the user data folder
 
 film:
   # Starting inversion pipeline: "bw" or "color". Both are first-class.

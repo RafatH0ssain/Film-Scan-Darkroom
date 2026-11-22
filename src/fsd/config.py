@@ -2,7 +2,8 @@
 ``FSD_<SECTION>_<KEY>`` environment variables, each overriding the last.
 
 The defaults open no rolls until a library root is given, but the two scanner
-capture folders are listed so a fresh install finds real rolls without setup.
+capture folders and the user's own ``rolls`` folder are listed so a fresh
+install finds real rolls without setup.
 """
 
 from __future__ import annotations
@@ -27,11 +28,24 @@ _EXPORT_FORMATS = frozenset({"tiff", "jpeg", "both"})
 class LibraryConfig:
     """Folders searched for rolls, plus any opened by hand."""
 
-    # Roots are strings here; expanduser them when they are used as paths.
+    # Roots stay strings in the config file. resolved_roots() turns them into
+    # paths, expanding ~ and treating relatives as under the user data folder.
     roots: list[str] = field(default_factory=lambda: [
         "~/Documents/Canon EDSDK Film Scanner/captures",
         "~/Documents/Canon Smart Film Scanner/captures",
+        "rolls",
     ])
+
+    def resolved_roots(self) -> list[Path]:
+        """Roots as paths: ``~`` expanded, relatives under the user folder."""
+        base = user_data_dir()
+        paths = []
+        for root in self.roots:
+            path = Path(root).expanduser()
+            if not path.is_absolute():
+                path = base / path
+            paths.append(path)
+        return paths
 
 
 @dataclass

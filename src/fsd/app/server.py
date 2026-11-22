@@ -28,6 +28,8 @@ from fsd.app.session import Session
 from fsd.config import Config, load_config
 from fsd.darkroom.export import photos_available
 from fsd.darkroom.presets import load_presets
+from fsd.darkroom.roll import find_rolls
+from fsd.mock.synth import main as write_example_roll
 from fsd.paths import example_config_path, is_frozen, static_dir, user_data_dir
 from fsd.processing.film import FilmParams
 from fsd.processing.sharpen import SharpenParams
@@ -299,7 +301,6 @@ def prepare_user_folder() -> Path | None:
 
     folder = user_data_dir()
     folder.mkdir(parents=True, exist_ok=True)
-    (folder / "captures").mkdir(exist_ok=True)
 
     destination = folder / "config.yaml"
     if not destination.is_file():
@@ -307,6 +308,12 @@ def prepare_user_folder() -> Path | None:
         if example.is_file():
             destination.write_text(example.read_text(encoding="utf-8"), encoding="utf-8")
             logger.info("Created %s", destination)
+
+    rolls_dir = folder / "rolls"
+    if not find_rolls([rolls_dir]):
+        example_roll = rolls_dir / "Example Roll"
+        write_example_roll(["--write", str(example_roll), "--frames", "4"])
+        logger.info("Created example roll at %s", example_roll)
     return destination
 
 

@@ -236,7 +236,7 @@ class Session:
             self._cond.notify_all()
 
     def library(self) -> list[dict]:
-        roots = [Path(root).expanduser() for root in self.cfg.library.roots]
+        roots = self.cfg.library.resolved_roots()
         with self._lock:
             opened = self._roll.path if self._roll is not None else None
         if opened is not None and not any(
