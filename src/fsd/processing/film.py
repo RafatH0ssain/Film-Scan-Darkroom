@@ -1,5 +1,7 @@
 """Copied from Canon-EDSDK-Film-Scanner src/cefs/processing/film.py at abf739d. Port fixes by hand.
-Changed here: highlights roll off through a shoulder instead of hard-clipping at white.
+Highlight shoulder ported back to the scanner. Changed here only: auto exposure is capped so the
+brightest 1% stays within the shoulder (the scanner inverts whole captures, holder included, where
+the cap would darken everything).
 
 Negative-to-positive inversion.
 
