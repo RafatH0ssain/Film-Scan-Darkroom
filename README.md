@@ -7,8 +7,9 @@ After scanning a roll with my [USB](https://github.com/RafatH0ssain/Canon-EDSDK-
 and sharpen every frame by hand. This does it for the whole roll. It finds each frame, crops and
 straightens it, inverts it, and lets me check everything in the browser before exporting.
 
-It never changes the original scans. For dust I use Clean Up in Apple Photos, so there's an
-Open in Photos button for that.
+It never changes the original scans.
+
+![Reviewing a roll: the frame strip, a cropped and inverted frame, and its settings](RollReview.png)
 
 ## Running it
 
