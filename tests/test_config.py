@@ -59,12 +59,15 @@ def test_env_roots_split_on_pathsep(clean_config, monkeypatch):
 
 
 def test_resolved_roots_expands_home_and_resolves_relatives(clean_config, monkeypatch):
-    monkeypatch.setenv("HOME", "/home/tester")
+    home = clean_config / "home"
+    # expanduser reads HOME on POSIX and USERPROFILE on Windows.
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
     cfg = load_config()
-    assert [str(path) for path in cfg.library.resolved_roots()] == [
-        "/home/tester/Documents/Canon EDSDK Film Scanner/captures",
-        "/home/tester/Documents/Canon Smart Film Scanner/captures",
-        str(clean_config / "rolls"),
+    assert cfg.library.resolved_roots() == [
+        home / "Documents" / "Canon EDSDK Film Scanner" / "captures",
+        home / "Documents" / "Canon Smart Film Scanner" / "captures",
+        clean_config / "rolls",
     ]
 
 

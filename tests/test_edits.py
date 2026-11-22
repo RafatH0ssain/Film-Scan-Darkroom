@@ -283,3 +283,24 @@ def test_concurrent_saves_leave_valid_json(tmp_path):
     assert not errors
     assert load(tmp_path).warnings == []
     assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_save_retries_while_target_is_locked(tmp_path, monkeypatch):
+    # Windows raises PermissionError while another process holds the file.
+    import fsd.darkroom.edits as edits_module
+
+    real_replace = os.replace
+    calls = {"n": 0}
+
+    def flaky(src, dst):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise PermissionError(13, "Access is denied")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(edits_module.os, "replace", flaky)
+    monkeypatch.setattr(edits_module.time, "sleep", lambda s: None)
+    save(tmp_path, Edits())
+    assert calls["n"] == 3
+    assert load(tmp_path).warnings == []
+    assert not list(tmp_path.glob("*.tmp"))

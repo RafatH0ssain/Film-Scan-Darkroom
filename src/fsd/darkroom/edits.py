@@ -18,6 +18,8 @@ import json
 import logging
 import os
 import tempfile
+import threading
+import time
 from dataclasses import asdict, dataclass, field, fields, replace
 from datetime import datetime
 from pathlib import Path
@@ -292,11 +294,35 @@ def _read_umask() -> int:
 _UMASK = _read_umask()
 
 
+#: Windows refuses os.replace onto a file another thread is replacing or
+#: reading ("Access is denied"), where POSIX just swaps the inode. One lock
+#: for every save in the process removes the in-process case.
+_SAVE_LOCK = threading.Lock()
+
+
+def _replace(tmp: Path, path: Path) -> None:
+    """``os.replace``, retried briefly while Windows holds the target.
+
+    # lazy: fixed 10 x 50 ms retry covers a reader in another process (an
+    # editor, antivirus) holding darkroom.json open for a moment; a longer
+    # hold still raises.
+    """
+    for attempt in range(10):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if attempt == 9:
+                raise
+            time.sleep(0.05)
+
+
 def save(roll_dir: Path, edits: Edits) -> None:
     """Write the sidecar atomically: a private temp file, then ``os.replace``.
 
     The temp file is unique to this call so concurrent writers cannot share
-    (and interleave on) one path.
+    (and interleave on) one path, and saves are serialized because Windows
+    cannot replace a file another writer is replacing.
     """
     path = Path(roll_dir) / SIDECAR
     payload = {
@@ -305,6 +331,11 @@ def save(roll_dir: Path, edits: Edits) -> None:
         "preset": edits.preset,
         "frames": {str(n): _jsonable(asdict(frame)) for n, frame in edits.frames.items()},
     }
+    with _SAVE_LOCK:
+        _write_and_replace(path, payload)
+
+
+def _write_and_replace(path: Path, payload: dict) -> None:
     tmp: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -318,7 +349,7 @@ def save(roll_dir: Path, edits: Edits) -> None:
             tmp = Path(handle.name)
             handle.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
         os.chmod(tmp, 0o666 & ~_UMASK)
-        os.replace(tmp, path)
+        _replace(tmp, path)
     except BaseException:
         if tmp is not None:
             tmp.unlink(missing_ok=True)
