@@ -17,6 +17,7 @@ import hashlib
 import json
 import logging
 import os
+import tempfile
 from dataclasses import asdict, dataclass, field, fields, replace
 from datetime import datetime
 from pathlib import Path
@@ -281,17 +282,35 @@ def load(roll_dir: Path) -> Edits:
 
 
 def save(roll_dir: Path, edits: Edits) -> None:
-    """Write the sidecar atomically: full temp file, then ``os.replace``."""
+    """Write the sidecar atomically: a private temp file, then ``os.replace``.
+
+    The temp file is unique to this call so concurrent writers cannot share
+    (and interleave on) one path.
+    """
     path = Path(roll_dir) / SIDECAR
-    tmp = path.with_name("darkroom.json.tmp")
     payload = {
         "schema": SCHEMA,
         "roll_defaults": _jsonable(edits.roll_defaults),
         "preset": edits.preset,
         "frames": {str(n): _jsonable(asdict(frame)) for n, frame in edits.frames.items()},
     }
-    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
+    tmp: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix="darkroom.json.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            tmp = Path(handle.name)
+            handle.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+        os.replace(tmp, path)
+    except BaseException:
+        if tmp is not None:
+            tmp.unlink(missing_ok=True)
+        raise
 
 
 def needs_detection(edit: FrameEdit | None, source: Path) -> bool:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 
 import pytest
 
@@ -246,3 +247,27 @@ def test_settings_hash_stable_and_sensitive():
     assert all(c in "0123456789abcdef" for c in h)
     assert settings_hash(FrameSettings(angle=0.1)) != h
     assert settings_hash(FrameSettings(sharpen=SharpenParams(amount=1.0))) != h
+
+
+def test_concurrent_saves_leave_valid_json(tmp_path):
+    edits = [Edits(frames={n: FrameEdit(source=f"img{n}.CR3", auto=_detection())})
+             for n in range(20)]
+    barrier = threading.Barrier(len(edits))
+    errors = []
+
+    def writer(state):
+        try:
+            barrier.wait()
+            save(tmp_path, state)
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=writer, args=(state,)) for state in edits]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert not errors
+    assert load(tmp_path).warnings == []
+    assert not list(tmp_path.glob("*.tmp"))
