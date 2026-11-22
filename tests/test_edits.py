@@ -86,12 +86,12 @@ def test_round_trip(tmp_path):
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX file modes only")
-def test_save_uses_umask_mode(tmp_path):
-    old = os.umask(0o027)
-    try:
-        save(tmp_path, Edits())
-    finally:
-        os.umask(old)
+def test_save_uses_umask_mode(tmp_path, monkeypatch):
+    # The umask is read once at import (it is process-wide); pin it here.
+    import fsd.darkroom.edits as edits_module
+
+    monkeypatch.setattr(edits_module, "_UMASK", 0o027)
+    save(tmp_path, Edits())
 
     mode = (tmp_path / SIDECAR).stat().st_mode & 0o777
     assert mode == 0o666 & ~0o027
