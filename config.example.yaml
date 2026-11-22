@@ -1,0 +1,50 @@
+# Film Scan Darkroom -- example configuration
+#
+# Copy this file to `config.yaml` and edit it:
+#
+#     copy config.example.yaml config.yaml      (Windows)
+#     cp config.example.yaml config.yaml        (macOS/Linux)
+#
+# `config.yaml` is git-ignored because it points at folders on your own disk.
+# Never commit it.
+#
+# Every value below can also be overridden by an environment variable named
+# FSD_<SECTION>_<KEY>, uppercased -- e.g. FSD_SERVER_PORT. Environment variables
+# win over the file. Library roots separated by the OS path separator (`:` on
+# macOS/Linux, `;` on Windows) when set through the environment.
+
+library:
+  # Folders searched for rolls. Relative paths resolve against the user data
+  # folder; `~` is expanded. Rolls opened by hand are remembered separately.
+  roots:
+    - "~/Documents/Canon EDSDK Film Scanner/captures"
+    - "~/Documents/Canon Smart Film Scanner/captures"
+
+film:
+  # Starting inversion pipeline: "bw" or "color". Both are first-class.
+  mode: "bw"
+  # Expected frame aspect ratio; any value greater than zero is accepted.
+  aspect: 1.5                   # 1.0, 1.25, 7/6 (1.1667) and 4/3 are common
+
+detect:
+  # Inset the detected crop by this fraction of the short side (default 1%).
+  margin: 0.01
+  # Frames detected with lower confidence are flagged for review.
+  min_confidence: 0.75
+
+export:
+  # Positive container: "tiff", "jpeg", or "both".
+  format: "tiff"
+  # TIFF compression: lossless deflate by default (LZW needs extra packages).
+  tiff_compression: "deflate"
+  # JPEG quality, 1-100; does not affect TIFF output.
+  jpeg_quality: 95
+  # Subfolder of the roll where positives are written; originals are untouched.
+  folder: "positives"
+
+server:
+  # Interface the local web UI binds to. Loopback by default: do not expose it
+  # to a network you do not trust.
+  host: "127.0.0.1"
+  # Port the local web UI listens on.
+  port: 8001
