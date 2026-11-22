@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv*/
+build/
+dist/
+.pytest_cache/
+.superpowers/
+# User state, from a source checkout (user_data_dir() is the repo root)
+config.yaml
+presets.yaml
+cache/
+rolls/
+.DS_Store
