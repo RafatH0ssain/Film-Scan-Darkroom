@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import math
 import sys
 import threading
 import time
@@ -21,7 +22,7 @@ from typing import Any, Literal
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from fsd import __version__
 from fsd.app.session import Session
@@ -40,6 +41,29 @@ APP_NAME = "Film Scan Darkroom"
 STATIC_DIR = static_dir()
 _FILM_FIELDS = frozenset(field.name for field in dataclass_fields(FilmParams))
 _SHARPEN_FIELDS = frozenset(field.name for field in dataclass_fields(SharpenParams))
+
+
+_NON_FINITE_TOKENS = frozenset({
+    "nan", "inf", "+inf", "-inf", "infinity", "+infinity", "-infinity",
+})
+
+
+def _check_finite(value: Any, label: str) -> None:
+    """Reject NaN/inf anywhere in a payload, including nested settings dicts."""
+    if isinstance(value, bool):
+        return
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise HTTPException(status_code=422, detail=f"Non-finite number in {label}")
+    elif isinstance(value, str):
+        if value.strip().lower() in _NON_FINITE_TOKENS:
+            raise HTTPException(status_code=422, detail=f"Non-finite number in {label}")
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            _check_finite(item, f"{label}.{key}")
+    elif isinstance(value, (list, tuple)):
+        for index, item in enumerate(value):
+            _check_finite(item, f"{label}[{index}]")
 
 
 def _check_keys(value: dict | None, allowed: frozenset[str], label: str) -> dict | None:
@@ -68,6 +92,14 @@ def _check_quad(
 class _SettingsModel(BaseModel):
     film: dict | None = None
     sharpen: dict | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _finite(cls, value):
+        if isinstance(value, dict):
+            for name, item in value.items():
+                _check_finite(item, name)
+        return value
 
     @field_validator("film")
     @classmethod
@@ -120,6 +152,14 @@ class ApplyRequest(BaseModel):
 class PresetRequest(BaseModel):
     name: str
     from_: int = Field(alias="from")
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Preset name must not be empty")
+        return value
 
 
 class ExportRequest(BaseModel):

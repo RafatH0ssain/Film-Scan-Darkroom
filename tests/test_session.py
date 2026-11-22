@@ -195,6 +195,95 @@ def test_export_job_progress_and_result(tmp_path, make_session):
     assert all(f["exported_current"] is True for f in frames.values())
 
 
+def test_edit_during_export_is_not_lost(tmp_path, make_session, monkeypatch):
+    roll_dir = _make_roll(tmp_path, (1, 2, 3))
+    session = make_session(roll_dir)
+    session.open(roll_dir)
+    assert session.wait_idle(20)
+
+    real_export_frames = session_mod.export_frames
+    paused_second = threading.Event()
+    resume_second = threading.Event()
+    paused_third = threading.Event()
+    resume_third = threading.Event()
+
+    def gated(roll, edits, frames, cfg, preset, **kwargs):
+        user_progress = kwargs.get("progress")
+
+        def progress(done, total):
+            if done == 2:
+                paused_second.set()
+                assert resume_second.wait(10)
+            if done == 3:
+                paused_third.set()
+                assert resume_third.wait(10)
+            if user_progress is not None:
+                user_progress(done, total)
+
+        kwargs["progress"] = progress
+        return real_export_frames(roll, edits, frames, cfg, preset, **kwargs)
+
+    monkeypatch.setattr(session_mod, "export_frames", gated)
+
+    job_id = session.start_export("all")
+    assert paused_second.wait(10)
+    session.edit(3, {"mirror": True})
+    assert load(roll_dir).frames[3].user["mirror"] is True
+    resume_second.set()
+
+    assert paused_third.wait(10)
+    assert load(roll_dir).frames[3].user["mirror"] is True
+    resume_third.set()
+
+    assert session.wait_idle(20)
+    assert session.job(job_id)["status"] == "done"
+
+    saved = load(roll_dir)
+    assert saved.frames[3].user["mirror"] is True
+    for n in (1, 2, 3):
+        assert saved.frames[n].exported.get("tif"), n
+
+
+def test_thumb_and_preview_missing_frame_raise(tmp_path, make_session):
+    roll_dir = _make_roll(tmp_path, (1,))
+    session = make_session(roll_dir)
+    session.open(roll_dir)
+    assert session.wait_idle(20)
+
+    with pytest.raises(KeyError):
+        session.thumb(999)
+    with pytest.raises(KeyError):
+        session.preview(999, "positive")
+
+
+def test_thumb_and_preview_take_single_lock(tmp_path, make_session):
+    roll_dir = _make_roll(tmp_path, (1,))
+    session = make_session(roll_dir)
+    session.open(roll_dir)
+    assert session.wait_idle(20)
+
+    class CountingLock:
+        def __init__(self, inner):
+            self.inner = inner
+            self.count = 0
+
+        def __enter__(self):
+            self.count += 1
+            return self.inner.__enter__()
+
+        def __exit__(self, *args):
+            return self.inner.__exit__(*args)
+
+    counting = CountingLock(session._lock)
+    session._lock = counting
+
+    session.thumb(1)
+    assert counting.count == 1
+    counting.count = 0
+    session.preview(1, "positive")
+    assert counting.count == 1
+
+
 def test_cancel_export(tmp_path, make_session):
     roll_dir = _make_roll(tmp_path, tuple(range(1, 11)))
     session = make_session(roll_dir)

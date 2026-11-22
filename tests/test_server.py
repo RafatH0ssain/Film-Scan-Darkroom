@@ -296,6 +296,44 @@ def test_bad_angle_range_422(app_ctx):
     assert client.post("/api/frames/1/edit", json={"rotate90": 4}).status_code == 422
 
 
+_JSON = {"content-type": "application/json"}
+
+
+def test_non_finite_edit_values_422(app_ctx):
+    client, _, _, _ = app_ctx
+    for body in (
+        '{"film": {"exposure": "NaN"}}',
+        '{"film": {"exposure": NaN}}',
+        '{"sharpen": {"amount": Infinity}}',
+        '{"angle": 1e400}',
+        '{"crop": [0.0, 0.0, Infinity, 1.0]}',
+    ):
+        response = client.post(
+            "/api/frames/1/edit", content=body, headers=_JSON
+        )
+        assert response.status_code == 422, body
+
+
+def test_non_finite_defaults_values_422(app_ctx):
+    client, _, _, _ = app_ctx
+    for body in (
+        '{"film": {"exposure": "NaN"}}',
+        '{"film": {"exposure": NaN}}',
+        '{"sharpen": {"radius": Infinity}}',
+    ):
+        response = client.post(
+            "/api/roll/defaults", content=body, headers=_JSON
+        )
+        assert response.status_code == 422, body
+
+
+def test_preset_empty_name_422(app_ctx):
+    client, _, _, _ = app_ctx
+    for name in ("", "   ", "\t\n"):
+        response = client.post("/api/presets", json={"name": name, "from": 1})
+        assert response.status_code == 422, repr(name)
+
+
 def test_open_in_photos_409_off_mac(app_ctx, monkeypatch):
     client, _, _, _ = app_ctx
     monkeypatch.setattr(sys, "platform", "linux")

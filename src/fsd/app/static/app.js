@@ -503,14 +503,22 @@ function constrain(crop, corner, pt) {
     height = Math.abs((signY > 0 ? 1 : 0) - fixedY) * nh;
     width = height * aspectRatio;
   }
-  x0 = signX > 0 ? fixedX : fixedX - width / nw;
-  x1 = signX > 0 ? fixedX + width / nw : fixedX;
-  y0 = signY > 0 ? fixedY : fixedY - height / nh;
-  y1 = signY > 0 ? fixedY + height / nh : fixedY;
-  return [
-    clamp(x0, 0, 1), clamp(y0, 0, 1),
-    clamp(x1, 0, 1), clamp(y1, 0, 1),
-  ];
+  x0 = clamp(signX > 0 ? fixedX : fixedX - width / nw, 0, 1);
+  x1 = clamp(signX > 0 ? fixedX + width / nw : fixedX, 0, 1);
+  y0 = clamp(signY > 0 ? fixedY : fixedY - height / nh, 0, 1);
+  y1 = clamp(signY > 0 ? fixedY + height / nh : fixedY, 0, 1);
+  let cw = Math.abs(x1 - x0) * nw;
+  let ch = Math.abs(y1 - y0) * nh;
+  if (cw / aspectRatio > ch) {
+    cw = ch * aspectRatio;
+    if (signX > 0) x1 = x0 + cw / nw;
+    else x0 = x1 - cw / nw;
+  } else {
+    ch = cw / aspectRatio;
+    if (signY > 0) y1 = y0 + ch / nh;
+    else y0 = y1 - ch / nh;
+  }
+  return [x0, y0, x1, y1];
 }
 
 function handleFrom(target) {

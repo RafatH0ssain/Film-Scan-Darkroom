@@ -34,8 +34,9 @@ def test_portrait_frame(holder):
 
 
 @pytest.mark.parametrize("holder", [False, True])
-def test_base_region_samples_base(holder):
-    img, truth = synth_scan(holder=holder, angle=0.8)
+@pytest.mark.parametrize("angle", [-4.5, -2.0, 0.8, 2.0, 4.5])
+def test_base_region_samples_base(holder, angle):
+    img, truth = synth_scan(holder=holder, angle=angle)
     lin = linear16_to_linear(img)
     d = detect(lin)
     assert d.base_region is not None

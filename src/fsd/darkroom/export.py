@@ -154,12 +154,15 @@ def export_frames(
     *,
     progress: Callable[[int, int], None] | None = None,
     cancelled: Callable[[], bool] = lambda: False,
+    on_exported: Callable[[int, FrameEdit], None] | None = None,
 ) -> list[ExportResult]:
     """Export ``frames`` in order, skipping rejected ones and saving as we go.
 
     Each frame is independent: a failure is recorded on its result and the loop
-    continues. The sidecar is saved only after a success, so a failed export
-    never records a path to a file that does not exist.
+    continues. After a success the caller's ``on_exported`` hook records the
+    frame (when supplied), otherwise the sidecar is saved here. The hook lets a
+    long-lived Session merge the result into its live edits instead of writing
+    back the stale snapshot this function was given.
     """
     results: list[ExportResult] = []
     total = len(frames)
@@ -170,7 +173,10 @@ def export_frames(
         if edit is None or not edit.rejected:
             result = export_frame(roll, edits, n, cfg, preset)
             if result.error is None:
-                save_edits(roll.path, edits)
+                if on_exported is not None:
+                    on_exported(n, edits.frames[n])
+                else:
+                    save_edits(roll.path, edits)
             results.append(result)
         if progress is not None:
             progress(done, total)

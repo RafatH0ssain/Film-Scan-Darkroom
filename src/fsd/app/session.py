@@ -270,10 +270,6 @@ class Session:
 
     # ---------------------------------------------------------------- state
 
-    def _effective(self, n: int):
-        with self._lock:
-            return effective(replace(self._edits, warnings=[]), n, self._preset, self.cfg)
-
     def _frame_state(self, n: int) -> dict:
         with self._lock:
             frame = next((f for f in self._roll.frames if f.number == n), None) if self._roll else None
@@ -323,13 +319,20 @@ class Session:
 
     # --------------------------------------------------------------- images
 
-    def _frame_info(self, n: int) -> tuple[Path, tuple[int, int] | None]:
+    def _render_context(self, n: int):
+        """Source, fingerprint and settings from one consistent lock holding.
+
+        Taking these together means a roll switch cannot pair one roll's frame
+        with another's settings, or leave us with a frame that has vanished.
+        """
         with self._lock:
             frame = next((f for f in self._roll.frames if f.number == n), None) if self._roll else None
             if frame is None:
                 raise KeyError(f"Frame {n} is not in the open roll")
             edit = self._edits.frames.get(n)
-            return frame.source, (edit.fingerprint if edit is not None else None)
+            fingerprint = edit.fingerprint if edit is not None else None
+            settings = effective(replace(self._edits, warnings=[]), n, self._preset, self.cfg)
+            return frame.source, fingerprint, settings
 
     @staticmethod
     def _encode(image: Image.Image) -> bytes:
@@ -338,8 +341,7 @@ class Session:
         return buffer.getvalue()
 
     def thumb(self, n: int) -> bytes:
-        settings = self._effective(n)
-        source, fingerprint = self._frame_info(n)
+        source, fingerprint, settings = self._render_context(n)
         key = json.dumps(
             [source.name, fingerprint, settings_hash(settings)], sort_keys=True
         )
@@ -355,8 +357,7 @@ class Session:
         return data
 
     def preview(self, n: int, view: Literal["positive", "negative"]) -> bytes:
-        settings = self._effective(n)
-        source, fingerprint = self._frame_info(n)
+        source, fingerprint, settings = self._render_context(n)
         decoded = _cached_half(str(source), fingerprint)
         if view == "positive":
             rendered = render(decoded, settings, scale=0.5)
@@ -464,24 +465,21 @@ class Session:
             roll_path = roll.path
             edits_copy = copy.deepcopy(self._edits)
             preset = self._preset
-        results = export_frames(
-            roll, edits_copy, targets, self.cfg, preset,
-            progress=progress, cancelled=cancelled,
-        )
-        with self._lock:
-            if self._roll is None or self._roll.path != roll_path:
-                return results
-            for n in targets:
-                copied = edits_copy.frames.get(n)
-                if copied is None:
-                    continue
+        def on_exported(n: int, exported_edit: FrameEdit) -> None:
+            with self._lock:
+                if self._roll is None or self._roll.path != roll_path:
+                    return
                 current = self._edits.frames.get(n)
                 if current is None:
-                    self._edits.frames[n] = copy.deepcopy(copied)
-                else:
-                    current.exported = copy.deepcopy(copied.exported)
-            save(roll_path, self._edits)
-        return results
+                    current = FrameEdit(source=exported_edit.source)
+                    self._edits.frames[n] = current
+                current.exported = copy.deepcopy(exported_edit.exported)
+                save(roll_path, self._edits)
+
+        return export_frames(
+            roll, edits_copy, targets, self.cfg, preset,
+            progress=progress, cancelled=cancelled, on_exported=on_exported,
+        )
 
     @staticmethod
     def _result_dict(result, roll_path: Path) -> dict:
