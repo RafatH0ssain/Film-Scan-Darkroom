@@ -543,7 +543,7 @@ els.overlay.addEventListener("pointerdown", (event) => {
     angle: currentAngle(),
     region: mode === "base" ? [start.x, start.y, 0, 0] : null,
   };
-  els.overlay.setPointerCapture(event.pointerId);
+  try { els.overlay.setPointerCapture(event.pointerId); } catch { /* capture unavailable */ }
   event.preventDefault();
 });
 

@@ -68,6 +68,7 @@ def test_export_writes_positive_and_records(tmp_path):
     _, roll = _make_roll(tmp_path)
     edits = Edits()
     cfg = Config()
+    cfg.film.mode = "color"
 
     result = export_frame(roll, edits, 1, cfg, None)
 
@@ -82,6 +83,31 @@ def test_export_writes_positive_and_records(tmp_path):
     assert exported["tif"] == "positives/Roll014_Frame01.tif"
     assert "at" in exported
     assert exported["settings_hash"] == settings_hash(effective(edits, 1, None, cfg))
+
+
+def test_bw_export_tiff_is_single_channel(tmp_path):
+    _, roll = _make_roll(tmp_path)
+    cfg = Config()
+    cfg.film.mode = "bw"
+
+    result = export_frame(roll, Edits(), 1, cfg, None)
+
+    assert result.error is None
+    image = read_rgb(result.files[0])
+    assert image.ndim == 2
+    assert image.dtype == np.uint16
+
+
+def test_color_export_tiff_is_rgb(tmp_path):
+    _, roll = _make_roll(tmp_path)
+    cfg = Config()
+    cfg.film.mode = "color"
+
+    result = export_frame(roll, Edits(), 1, cfg, None)
+
+    assert result.error is None
+    image = read_rgb(result.files[0])
+    assert image.shape == (200, 300, 3)
 
 
 def test_export_never_touches_sources(tmp_path):

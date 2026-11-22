@@ -85,6 +85,18 @@ def test_round_trip(tmp_path):
     assert raw["frames"]["7"]["user"]["crop"] == [0.2, 0.3, 0.7, 0.8]
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX file modes only")
+def test_save_uses_umask_mode(tmp_path):
+    old = os.umask(0o027)
+    try:
+        save(tmp_path, Edits())
+    finally:
+        os.umask(old)
+
+    mode = (tmp_path / SIDECAR).stat().st_mode & 0o777
+    assert mode == 0o666 & ~0o027
+
+
 def test_save_is_atomic(tmp_path, monkeypatch):
     original = "do not lose me"
     (tmp_path / SIDECAR).write_text(original, encoding="utf-8")

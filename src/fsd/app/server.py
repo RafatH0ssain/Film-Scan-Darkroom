@@ -203,12 +203,20 @@ def create_app(
     @app.get("/api/frames/{n}/thumb")
     def thumb(n: int) -> Response:
         frame_or_404(n)
-        return Response(content=session.thumb(n), media_type="image/jpeg")
+        return Response(
+            content=session.thumb(n),
+            media_type="image/jpeg",
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.get("/api/frames/{n}/preview")
     def preview(n: int, view: Literal["positive", "negative"] = "positive") -> Response:
         frame_or_404(n)
-        return Response(content=session.preview(n, view), media_type="image/jpeg")
+        return Response(
+            content=session.preview(n, view),
+            media_type="image/jpeg",
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.post("/api/frames/{n}/edit")
     def edit(n: int, request: EditRequest) -> dict:

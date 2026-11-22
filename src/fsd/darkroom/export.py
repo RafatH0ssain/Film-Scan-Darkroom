@@ -107,6 +107,7 @@ def export_frame(
         settings = effective(edits, n, preset, cfg)
         digest = settings_hash(settings)
         image = render(decode(source), settings)
+        bw = settings.film.mode == "bw"
         description = describe(roll, n)
 
         (roll.path / cfg.export.folder).mkdir(parents=True, exist_ok=True)
@@ -118,7 +119,7 @@ def export_frame(
             if key == "tif":
                 write_tiff(
                     target,
-                    image,
+                    image[..., 0] if bw else image,
                     compression=cfg.export.tiff_compression,
                     description=_encode_description(description),
                     software=SOFTWARE,
@@ -128,7 +129,9 @@ def export_frame(
                 exif[0x010E] = _encode_description(description)
                 exif[0x0131] = SOFTWARE
                 eight_bit = (image >> 8).astype(np.uint8)
-                Image.fromarray(eight_bit, "RGB").save(
+                if bw:
+                    eight_bit = eight_bit[..., 0]
+                Image.fromarray(eight_bit, "L" if bw else "RGB").save(
                     target, quality=cfg.export.jpeg_quality, exif=exif
                 )
             exported[key] = _relative(roll, target)

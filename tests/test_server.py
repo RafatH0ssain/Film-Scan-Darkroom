@@ -147,6 +147,14 @@ def test_preview(app_ctx):
     assert client.get("/api/frames/1/preview").status_code == 200
 
 
+def test_thumb_and_preview_no_store(app_ctx):
+    client, _, _, _ = app_ctx
+    for url in ("/api/frames/1/thumb", "/api/frames/1/preview"):
+        response = client.get(url)
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "no-store"
+
+
 def test_edit(app_ctx):
     client, _, _, _ = app_ctx
     response = client.post(

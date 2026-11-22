@@ -281,6 +281,17 @@ def load(roll_dir: Path) -> Edits:
     return edits
 
 
+def _read_umask() -> int:
+    # os.umask can only be read by setting it, and it is process-wide: done
+    # once at import, before any worker threads exist, not per save.
+    old = os.umask(0)
+    os.umask(old)
+    return old
+
+
+_UMASK = _read_umask()
+
+
 def save(roll_dir: Path, edits: Edits) -> None:
     """Write the sidecar atomically: a private temp file, then ``os.replace``.
 
@@ -306,6 +317,7 @@ def save(roll_dir: Path, edits: Edits) -> None:
         ) as handle:
             tmp = Path(handle.name)
             handle.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+        os.chmod(tmp, 0o666 & ~_UMASK)
         os.replace(tmp, path)
     except BaseException:
         if tmp is not None:
